@@ -5,26 +5,23 @@ from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-# Lấy thông tin từ Biến Môi Trường (RENDER ENV)
+# THÔNG TIN BÍ MẬT ĐƯỢC LẤY TỪ RENDER
 API_ID = os.environ.get('API_ID')
 API_HASH = os.environ.get('API_HASH')
 PHONE = os.environ.get('PHONE_NUMBER')
-BOT_USERNAME = "@BlumCryptoBot" # THAY BẰNG BOT COIN BẠN MUỐN ĐÀO
+BOT_USERNAME = "@BlumCryptoBot" # <-- CHỈNH SỬA TÊN BOT CỦA BẠN TẠI ĐÂY
 
 client = TelegramClient('session_render', API_ID, API_HASH)
 
 async def main():
-    print(f"{Fore.YELLOW}🚀 KHỞI ĐỘNG MINER AiDaide TRÊN RENDER...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}🚀 KHỞI ĐỘNG MINER AiDaide...{Style.RESET_ALL}")
     
-    # Kết nối và đăng nhập
     await client.start(phone=PHONE)
-    print(f"{Fore.GREEN}✅ ĐĂNG NHẬP THÀNH CÔNG! Bắt đầu chu trình đào coin.{Style.RESET_ALL}")
+    print(f"{Fore.GREEN}✅ ĐĂNG NHẬP TELEGRAM THÀNH CÔNG! Bắt đầu đào coin 24/7.{Style.RESET_ALL}")
     
     while True:
         try:
             print(f"\n{Fore.CYAN}--- LỆNH ĐÀO MỚI ---{Style.RESET_ALL}")
-            
-            # Gửi lệnh /start (Bot Coin sẽ hiểu là Claim/Start)
             await client.send_message(BOT_USERNAME, '/start') 
             print(f"{Fore.GREEN}✅ Đã gửi lệnh /start tới {BOT_USERNAME}")
             
@@ -33,7 +30,7 @@ async def main():
             time.sleep(3600)
             
         except Exception as e:
-            print(f"{Fore.RED}❌ Lỗi xảy ra: {e}. Thử lại sau 5 phút.")
+            print(f"{Fore.RED}❌ Lỗi: {e}. Thử lại sau 5 phút.")
             time.sleep(300)
 
 with client:
