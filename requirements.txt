@@ -1,5 +1,2 @@
-google-generativeai
-python-telegram-bot
-flask
-gunicorn
-yt-dlp
+telethon
+colorama
