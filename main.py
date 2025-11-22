@@ -6,6 +6,7 @@ from flask import Flask
 from threading import Thread
 import yt_dlp
 import requests
+import time
 
 # --- CẤU HÌNH ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -13,73 +14,93 @@ TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 # --- WEB SERVER ---
 app = Flask(__name__)
 @app.route('/')
-def home(): return "👑 TRỢ LÝ AI ĐẠI ĐẾ (ANTI-BLOCK MODE) ONLINE!"
+def home(): return "🎥 BOT MOVIE DOWNLOADER V15 ONLINE!"
 def run_web(): app.run(host='0.0.0.0', port=10000)
 def keep_alive(): Thread(target=run_web).start()
 
-# --- HÀM GIẢI MÃ LINK RÚT GỌN (QUAN TRỌNG CHO DOUYIN) ---
-def get_real_url(short_url):
+# --- HÀM UPLOAD GOFILE (CHO FILE NẶNG) ---
+def upload_to_gofile(file_path):
     try:
-        # Giả danh iPhone để lấy link gốc
-        headers = {'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1'}
-        response = requests.head(short_url, allow_redirects=True, headers=headers)
-        return response.url
-    except:
-        return short_url
+        # Tìm server tốt nhất
+        server = requests.get("https://api.gofile.io/getServer").json()['data']['server']
+        # Upload
+        with open(file_path, 'rb') as f:
+            response = requests.post(
+                f"https://{server}.gofile.io/uploadFile",
+                files={'file': f}
+            ).json()
+        if response['status'] == 'ok':
+            return response['data']['downloadPage']
+    except Exception as e:
+        print(f"Lỗi Gofile: {e}")
+    return None
 
-# --- CHỨC NĂNG TẢI VIDEO ---
+# --- CHỨC NĂNG TẢI ---
 async def download_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
-    # Logic tải video
     if "http" in text:
-        msg = await update.message.reply_text("⚡ **Đại Đế đang phá tường lửa để hút video...**", parse_mode='Markdown')
+        msg = await update.message.reply_text("🍿 **Phát hiện Link Phim/Video!**\n⚡ Đang khởi động máy hút...", parse_mode='Markdown')
         
-        # 1. Lấy link thật (nếu là link rút gọn v.douyin...)
-        real_url = get_real_url(text)
-        print(f"Link gốc: {real_url}")
-
-        filename = f"video_{update.message.message_id}.mp4"
+        filename = f"movie_{update.message.message_id}.mp4"
         
-        # 2. Cấu hình yt-dlp "Tàng Hình" (Giả danh iPhone)
+        # Cấu hình yt-dlp ĂN TẠP (Chấp hết các loại web)
         ydl_opts = {
             'outtmpl': filename,
-            'format': 'best[ext=mp4]/best',
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', # Ưu tiên chất lượng cao nhất
             'quiet': True,
             'noplaylist': True,
-            'nocheckcertificate': True, # Bỏ qua lỗi SSL
-            'ignoreerrors': True,
-            # Dòng này quan trọng nhất: Giả làm iPhone
-            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-            'http_headers': {
-                'Referer': 'https://www.tiktok.com/',
-                'Accept-Language': 'en-US,en;q=0.9',
-            }
+            'nocheckcertificate': True,
+            'geo_bypass': True, # Vượt chặn quốc gia
+            # Giả danh máy tính Windows để vào web phim
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'http_headers': {'Referer': text} # Đánh lừa server phim
         }
         
         try:
+            # 1. Tải về Server Render
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([real_url])
-            
+                info = ydl.extract_info(text, download=True)
+                title = info.get('title', 'Video Phim')
+                
             if os.path.exists(filename):
-                await msg.edit_text("🚀 **Đang dâng hàng lên...**", parse_mode='Markdown')
-                with open(filename, 'rb') as f:
-                    await update.message.reply_video(video=f, caption="💎 **Video sạch (No Watermark)!**")
-                os.remove(filename)
+                file_size = os.path.getsize(filename) / (1024 * 1024) # MB
+                
+                # 2. Phân loại xử lý
+                if file_size < 49:
+                    await msg.edit_text(f"🚀 **Đang gửi video ({file_size:.1f}MB)...**", parse_mode='Markdown')
+                    with open(filename, 'rb') as f:
+                        await update.message.reply_video(video=f, caption=f"🎬 **{title}**")
+                else:
+                    await msg.edit_text(f"⚠️ **Phim nặng ({file_size:.1f}MB)!**\n⚡ Đang chuyển sang Link tải nhanh...", parse_mode='Markdown')
+                    
+                    # Upload lên Gofile
+                    link_tai = upload_to_gofile(filename)
+                    
+                    if link_tai:
+                        await update.message.reply_text(
+                            f"🎬 **{title}**\n"
+                            f"📦 Dung lượng: {file_size:.2f} MB\n"
+                            f"🚀 **BẤM VÀO ĐÂY ĐỂ TẢI (Max Speed):**\n{link_tai}",
+                            parse_mode='Markdown'
+                        )
+                    else:
+                        await update.message.reply_text("❌ File quá nặng, không tạo được link tải!")
+
+                os.remove(filename) # Dọn rác
                 await msg.delete()
             else:
-                await msg.edit_text("❌ TikTok chặn căng quá! Thử link khác xem sao.")
+                await msg.edit_text("❌ Web này chặn Bot rồi! (Hoặc link hỏng)")
                 
         except Exception as e:
             await msg.edit_text(f"❌ Lỗi: {str(e)}")
-            
     else:
-        await update.message.reply_text("Gửi Link Video vào đây đi đại ca!")
+        await update.message.reply_text("Gửi Link Phim/Video vào đây đại ca!")
 
 if __name__ == '__main__':
     keep_alive()
     if TELEGRAM_TOKEN:
-        print(">>> AI ĐẠI ĐẾ (ANTI-BLOCK) STARTED...")
+        print(">>> MOVIE BOT STARTED...")
         app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
         app_bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), download_and_send))
         app_bot.run_polling()
