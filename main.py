@@ -1,96 +1,79 @@
 import os
-import logging
+import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 from flask import Flask
 from threading import Thread
-import yt_dlp
-import requests
-import time
 
 # --- CẤU HÌNH ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 
-# --- WEB SERVER ---
+# --- WEB SERVER GIỮ SỐNG ---
 app = Flask(__name__)
 @app.route('/')
-def home(): return "🚀 V16 ANTI-BOT YOUTUBE IS RUNNING!"
+def home(): return "💎 V17 API MODE IS RUNNING!"
 def run_web(): app.run(host='0.0.0.0', port=10000)
 def keep_alive(): Thread(target=run_web).start()
 
-# --- HÀM UPLOAD GOFILE (CHO FILE NẶNG) ---
-def upload_to_gofile(file_path):
+# --- HÀM GỌI API COBALT (CHÌA KHÓA VẠN NĂNG) ---
+def get_media_url(url):
+    api_url = "https://api.cobalt.tools/api/json"
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    data = {
+        "url": url,
+        "vCodec": "h264",
+        "vQuality": "max",
+        "aFormat": "mp3",
+        "filenamePattern": "basic"
+    }
     try:
-        server = requests.get("https://api.gofile.io/getServer").json()['data']['server']
-        with open(file_path, 'rb') as f:
-            response = requests.post(
-                f"https://{server}.gofile.io/uploadFile",
-                files={'file': f}
-            ).json()
-        if response['status'] == 'ok':
-            return response['data']['downloadPage']
-    except: return None
+        response = requests.post(api_url, json=data, headers=headers)
+        response_json = response.json()
+        
+        # Kiểm tra kết quả
+        if 'url' in response_json:
+            return response_json['url']
+        elif 'picker' in response_json: # Trường hợp có nhiều video/ảnh
+            return response_json['picker'][0]['url']
+        else:
+            print(f"Lỗi API: {response_json}")
+            return None
+    except Exception as e:
+        print(f"Lỗi kết nối API: {e}")
+        return None
 
-# --- CHỨC NĂNG TẢI ---
-async def download_and_send(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- XỬ LÝ TIN NHẮN ---
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     
     if "http" in text:
-        msg = await update.message.reply_text("⚡ **Phát hiện Link! Đang giả dạng Android để tải...**", parse_mode='Markdown')
+        msg = await update.message.reply_text("⚡ **Đang nhờ Server xịn tải giúp...**", parse_mode='Markdown')
         
-        filename = f"video_{update.message.message_id}.mp4"
+        # 1. Lấy link tải trực tiếp từ API
+        direct_url = get_media_url(text)
         
-        # CẤU HÌNH VƯỢT TƯỜNG LỬA YOUTUBE
-        ydl_opts = {
-            'outtmpl': filename,
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            'quiet': True,
-            'noplaylist': True,
-            'nocheckcertificate': True,
-            'geo_bypass': True,
-            # --- BÍ KÍP VƯỢT LỖI SIGN IN ---
-            # Ép buộc dùng API của Android/iOS thay vì Web
-            'extractor_args': {
-                'youtube': {
-                    'player_client': ['android', 'ios']
-                }
-            }
-        }
-        
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(text, download=True)
-                title = info.get('title', 'Video Downloaded')
+        if direct_url:
+            try:
+                await msg.edit_text("🚀 **Hàng đã về! Đang gửi...**", parse_mode='Markdown')
                 
-            if os.path.exists(filename):
-                file_size = os.path.getsize(filename) / (1024 * 1024)
-                
-                if file_size < 49:
-                    await msg.edit_text("🚀 **Đang bắn hàng...**", parse_mode='Markdown')
-                    with open(filename, 'rb') as f:
-                        await update.message.reply_video(video=f, caption=f"🎬 **{title}**")
-                else:
-                    await msg.edit_text(f"⚠️ **Nặng {file_size:.1f}MB!** Đang up lên Cloud...", parse_mode='Markdown')
-                    link_tai = upload_to_gofile(filename)
-                    if link_tai:
-                        await update.message.reply_text(f"🎬 **{title}**\n🚀 **Link tải Max Speed:**\n{link_tai}", parse_mode='Markdown')
-                    else:
-                        await update.message.reply_text("❌ File nặng quá mà Gofile bị lỗi rồi!")
-
-                os.remove(filename)
+                # 2. Gửi Video (Telegram tự tải từ URL kia về)
+                await update.message.reply_video(
+                    video=direct_url, 
+                    caption="💎 **Tải thành công! (No Watermark)**"
+                )
                 await msg.delete()
-            else:
-                await msg.edit_text("❌ YouTube chặn căng quá! Thử lại sau ít phút.")
-                
-        except Exception as e:
-            await msg.edit_text(f"❌ Lỗi: {str(e)}")
+            except Exception as e:
+                # Nếu gửi video lỗi (do file quá to), gửi link tải
+                await msg.edit_text(f"⚠️ File quá nặng (>50MB) hoặc Telegram chặn URL.\n👇 **Bấm vào đây để tải:**\n{direct_url}")
+        else:
+            await msg.edit_text("❌ Link này khó quá, API chưa hỗ trợ hoặc đang bảo trì!")
     else:
-        await update.message.reply_text("Gửi Link vào đây đi đại ca!")
+        await update.message.reply_text("Gửi Link (TikTok/Youtube/FB) vào đây!")
 
 if __name__ == '__main__':
     keep_alive()
     if TELEGRAM_TOKEN:
-        print(">>> V16 STARTED...")
+        print(">>> V17 API BOT STARTED...")
         app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-        app_bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), download_and_send))
+        app_bot.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
         app_bot.run_polling()
